@@ -1,0 +1,16 @@
+[package]
+name = "lxi"
+version = "0.1.0"
+authors = ["Alexey Gerasev <alexey.gerasev@gmail.com>"]
+edition = "2018"
+
+description = "LXI protocol implementation"
+documentation = "https://docs.rs/lxi"
+homepage = "https://github.com/nthend/lxi-rs"
+repository = "https://github.com/nthend/lxi-rs.git"
+readme = "README.md"
+keywords = ["lxi", "scpi", "lan", "instrumentation"]
+categories = ["network-programming"]
+license = "MIT/Apache-2.0"
+
+[dependencies]
