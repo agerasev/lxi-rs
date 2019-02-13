@@ -101,18 +101,18 @@ mod tests {
 
     #[test]
     fn idn() {
-        let emulator = Emulator::new(("localhost", 0)).unwrap();
-
-        let port = emulator.address().unwrap().port();
-
-        let mut emulator = emulator.run().unwrap();
+        let e = Emulator::new(("localhost", 0)).unwrap();
+        let p = e.address().unwrap().port();
+        let e = e.run();
 
         thread::sleep(Duration::from_millis(100));
 
-        let mut device = LxiDevice::new((String::from("localhost"), port));
-        device.connect().unwrap();
-        assert_eq!(device.request(&"*IDN?").unwrap(), "Emulator\r\n");
+        {
+            let mut d = LxiDevice::new((String::from("localhost"), p));
+            d.connect().unwrap();
+            assert_eq!(d.request(&"*IDN?").unwrap(), "Emulator\r\n");
+        }
 
-        emulator.shutdown().unwrap();
+        e.join().unwrap().unwrap();
     }
 }
