@@ -19,7 +19,7 @@ impl Emulator {
         self.listener.local_addr()
     }
 
-    pub fn run(mut self) -> JoinHandle<io::Result<()>> {
+    pub fn run(self) -> JoinHandle<io::Result<()>> {
         thread::spawn(move || {
             let stream = self.listener.incoming().next().unwrap()?;
 
@@ -41,7 +41,8 @@ impl Emulator {
                 .and_then(|_| writer.flush()) {
                     Ok(_) => (),
                     Err(err) => match err.kind() {
-                        io::ErrorKind::BrokenPipe => break Ok(()),
+                         io::ErrorKind::ConnectionAborted |
+                         io::ErrorKind::BrokenPipe => break Ok(()),
                         _ => break Err(err),
                     },
                 }

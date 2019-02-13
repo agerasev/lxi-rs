@@ -76,7 +76,9 @@ impl LxiStream {
         let mut buf = Vec::new();
         self.inp.read_until(b'\n', &mut buf)
         .and_then(|_num| {
-            Ok(String::from_utf8_lossy(&buf).into_owned())
+            let mut text = String::from_utf8_lossy(&buf).into_owned();
+            remove_newline(&mut text);
+            Ok(text)
         })
     }
 
@@ -86,6 +88,17 @@ impl LxiStream {
     }
 }
 
+fn remove_newline(text: &mut String) {
+    match text.pop() {
+        Some('\n') => match text.pop() {
+            Some('\r') => (),
+            Some(c) => text.push(c),
+            None => (),
+        },
+        Some(c) => text.push(c),
+        None => (),
+    }
+}
 
 #[cfg(test)]
 mod emul;
@@ -110,7 +123,7 @@ mod tests {
         {
             let mut d = LxiDevice::new((String::from("localhost"), p));
             d.connect().unwrap();
-            assert_eq!(d.request(&"*IDN?").unwrap(), "Emulator\r\n");
+            assert_eq!(d.request(&"*IDN?").unwrap(), "Emulator");
         }
 
         e.join().unwrap().unwrap();
