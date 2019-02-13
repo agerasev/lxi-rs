@@ -113,8 +113,6 @@ mod tests {
         device.connect().unwrap();
         assert_eq!(device.request(&"*IDN?").unwrap(), "Emulator\r\n");
 
-        println!("got request");
-
         emulator.shutdown().unwrap();
     }
 }

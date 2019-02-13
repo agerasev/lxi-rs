@@ -1,13 +1,12 @@
 use std::io::{prelude::*, self, BufReader, BufWriter};
 use std::net::{SocketAddr, TcpListener, TcpStream, Shutdown};
 use std::thread::{self, JoinHandle};
-use std::sync::{Arc, Mutex};
-use std::collections::{HashMap};
+use std::sync::{Arc};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct Emulator {
     listener: TcpListener,
-    streams: Arc<Mutex<HashMap<usize, Option<(TcpStream, JoinHandle<()>)>>>>,
+    clients: Vec<(TcpStream, JoinHandle<()>)>,
     exit: Arc<AtomicBool>,
 }
 
@@ -22,7 +21,7 @@ impl Emulator {
         let listener = TcpListener::bind(addr)?;
         Ok(Emulator {
             listener,
-            streams: Arc::new(Mutex::new(HashMap::new())),
+            clients: Vec::new(),
             exit: Arc::new(AtomicBool::new(false)),
         })
     }
@@ -31,11 +30,8 @@ impl Emulator {
         self.listener.local_addr()
     }
 
-    pub fn handle_client(&self, stream: TcpStream, id: usize) -> io::Result<()> {
-        let streams = self.streams.clone();
-        let mut guard = self.streams.lock().unwrap();
-
-        assert!(guard.insert(id, Some((
+    pub fn handle_client(&mut self, stream: TcpStream) -> io::Result<()> {
+        self.clients.push((
             stream.try_clone()?,
             thread::spawn(move || {
                 let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -61,29 +57,23 @@ impl Emulator {
                         },
                     };
                 }
-
-                {
-                    let mut guard = streams.lock().unwrap();
-                    guard.remove(&id).unwrap();
-                }
             }),
-        ))).is_none());
+        ));
 
         Ok(())
     }
 
-    pub fn run(self) -> io::Result<EmulatorHandle> {
+    pub fn run(mut self) -> io::Result<EmulatorHandle> {
         let address = self.address()?;
         let exit = self.exit.clone();
 
         let thread = thread::spawn(move || {
-            let mut id = 1;
-            for stream in self.listener.incoming() {
+            let listener = self.listener.try_clone().unwrap();
+            for stream in listener.incoming() {
                 if self.exit.load(Ordering::SeqCst) {
                     break;
                 }
-                self.handle_client(stream.unwrap(), id).unwrap();
-                id += 1;
+                self.handle_client(stream.unwrap()).unwrap();
             }
         });
 
@@ -93,9 +83,7 @@ impl Emulator {
 
 impl Drop for Emulator {
     fn drop(&mut self) {
-        let mut guard = self.streams.lock().unwrap();
-        for (_id, opt) in guard.iter_mut() {
-            let (stream, thread) = opt.take().unwrap();
+        while let Some((stream, thread)) = self.clients.pop() {
             stream.shutdown(Shutdown::Both).unwrap();
             thread.join().unwrap();
         }
