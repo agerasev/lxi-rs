@@ -33,6 +33,8 @@ impl Emulator {
                 .map(|_| {
                     if buf.starts_with(b"*IDN?") {
                         &b"Emulator\r\n"[..]
+                    } else if buf.starts_with(b"DATA?") {
+                        &b"#14\0\xff\n\x80\r\n"[..]
                     } else {
                         &b"Error\r\n"[..]
                     }

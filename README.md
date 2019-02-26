@@ -9,7 +9,7 @@
 
 [crates_badge]: https://img.shields.io/crates/v/lxi.svg
 [docs_badge]: https://docs.rs/lxi/badge.svg
-[travis_badge]: https://api.travis-ci.org/nthend/lxi-rs.svg
+[travis_badge]: https://api.travis-ci.org/nthend/lxi-rs.svg?branch=master
 [appveyor_badge]: https://ci.appveyor.com/api/projects/status/github/nthend/lxi-rs?branch=master&svg=true
 [codecov_badge]: https://codecov.io/gh/nthend/lxi-rs/graphs/badge.svg
 [license_badge]: https://img.shields.io/crates/l/lxi.svg

@@ -16,11 +16,10 @@ struct LxiStream {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LxiResponse {
-    Text(String),
+pub enum LxiData {
+    Text(Vec<u8>),
     Bin(Vec<u8>),
 }
-
 
 impl LxiDevice {
     pub fn new(addr: (String, u16), timeout: Option<Duration>) -> Self {
@@ -98,7 +97,7 @@ impl LxiDevice {
         self.with_stream(|stream| stream.send(data))
     }
 
-    pub fn receive(&mut self) -> io::Result<LxiResponse> {
+    pub fn receive(&mut self) -> io::Result<LxiData> {
         self.with_stream(|stream| stream.receive())
     }
 
@@ -106,7 +105,7 @@ impl LxiDevice {
         self.with_stream(|stream| stream.send_timeout(data, timeout))
     }
 
-    pub fn receive_timeout(&mut self, timeout: Option<Duration>) -> io::Result<LxiResponse> {
+    pub fn receive_timeout(&mut self, timeout: Option<Duration>) -> io::Result<LxiData> {
         self.with_stream(|stream| stream.receive_timeout(timeout))
     }
 }
@@ -124,23 +123,57 @@ impl LxiStream {
         .and_then(|()| self.out.flush())
     }
 
-    fn receive(&mut self) -> io::Result<LxiResponse> {
-        let mut byte: [u8; 1] = [0];
-        let mut buf = Vec::with_capacity(1);
-        self.inp.read_exact(&mut byte)
+    fn receive(&mut self) -> io::Result<LxiData> {
+        let mut buf = vec![0];
+        self.inp.read_exact(&mut buf)
         .and_then(|()| {
-            if byte[0] != b'#' {
+            if buf[0] != b'#' {
                 // Ascii format
                 self.inp.read_until(b'\n', &mut buf)
                 .and_then(|_num| {
                     remove_newline(&mut buf);
-                    Ok(buf)
+                    Ok(LxiData::from_text(buf))
                 })
             } else {
                 // Binary format
-                self.inp.read_exact(&mut byte)
+                self.inp.read_exact(&mut buf)
                 .and_then(|()| {
-                    (byte[0] as char).to_digit(10)
+                    (buf[0] as char).to_digit(10)
+                    .ok_or(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "bin read: second byte is not digit"
+                    ))
+                })
+                .and_then(|n| {
+                    buf.resize(n as usize, b'\0');
+                    self.inp.read_exact(&mut buf)
+                })
+                .and_then(|()| {
+                    String::from_utf8_lossy(&buf).parse::<usize>()
+                    .map_err(|_e| io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "bin read: error parse message size"
+                    ))
+                })
+                .and_then(|n| {
+                    buf.resize(n, b'\0');
+                    self.inp.read_exact(&mut buf)
+                })
+                .and_then(|()| {
+                    let mut end = Vec::new();
+                    self.inp.read_until(b'\n', &mut end)
+                    .map(|_k| end)
+                })
+                .and_then(|mut end| {
+                    remove_newline(&mut end);
+                    if end.len() > 0 {
+                        Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "bin read: not only newline after message"
+                        ))
+                    } else {
+                        Ok(LxiData::from_bin(buf))
+                    }
                 })
             }
         })
@@ -154,7 +187,7 @@ impl LxiStream {
         res
     }
 
-    fn receive_timeout(&mut self, to: Option<Duration>) -> io::Result<LxiResponse> {
+    fn receive_timeout(&mut self, to: Option<Duration>) -> io::Result<LxiData> {
         let dto = self.out.get_ref().read_timeout()?;
         self.out.get_mut().set_read_timeout(to)?;
         let res = self.receive();
@@ -175,12 +208,12 @@ fn remove_newline(text: &mut Vec<u8>) {
     }
 }
 
-impl LxiResponse {
-    pub fn from_text<T: AsRef<str>>(t: &T) -> LxiResponse {
-        LxiResponse::Text(String::from(t.as_ref()))
+impl LxiData {
+    pub fn from_text(v: Vec<u8>) -> LxiData {
+        LxiData::Text(v)
     }
-    pub fn from_bin<T: AsRef<[u8]>>(t: &T) -> LxiResponse {
-        LxiResponse::Bin(Vec::from(t.as_ref()))
+    pub fn from_bin(v: Vec<u8>) -> LxiData {
+        LxiData::Bin(v)
     }
 }
 
@@ -197,7 +230,7 @@ mod tests {
     use emul::{Emulator};
 
     #[test]
-    fn idn() {
+    fn emulate() {
         let e = Emulator::new(("localhost", 0)).unwrap();
         let p = e.address().unwrap().port();
         let e = e.run();
@@ -207,8 +240,15 @@ mod tests {
         {
             let mut d = LxiDevice::new((String::from("localhost"), p), None);
             d.connect().unwrap();
+
             d.send(b"*IDN?").unwrap();
-            assert_eq!(d.receive().unwrap(), LxiResponse::from_text(&"Emulator"));
+            assert_eq!(d.receive().unwrap(), LxiData::from_text(Vec::from("Emulator")));
+
+            d.send(b"DATA?").unwrap();
+            assert_eq!(d.receive().unwrap(), LxiData::from_bin(vec![0, 255, 10, 128]));
+
+            d.send(b"*IDN?").unwrap();
+            assert_eq!(d.receive().unwrap(), LxiData::from_text(Vec::from("Emulator")));
         }
 
         e.join().unwrap().unwrap();
